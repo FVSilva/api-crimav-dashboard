@@ -8,6 +8,16 @@ const httpsAgent = new https.Agent({
   keepAlive: true,
 });
 
+export function getErrorMessage(err) {
+  return (
+    err?.response?.data?.title ||
+    err?.response?.data?.detail ||
+    err?.response?.data?.message ||
+    err?.message ||
+    "Unknown error"
+  );
+}
+
 export async function safeGet(path, params = {}) {
   const url = `${DOMAIN}${path}`;
 

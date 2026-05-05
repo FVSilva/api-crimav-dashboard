@@ -1,14 +1,31 @@
 import dayjs from "dayjs";
-import { safeGet } from "./kommoClient.js";
-import { normalizeCF } from "../utils/fields.js";
+import { safeGet, getErrorMessage } from "./kommoClient.js";
 import { CRIMAV } from "../config/crimav.js";
-import { saveCache } from "../utils/cache.js";
+import { normalizeCF } from "../utils/fields.js";
+import { saveCache, loadCache } from "../utils/cache.js";
 
+const CACHE_FILE = "leads.json";
 const LIMIT = 250;
 
-export async function getLeads() {
+let isSyncing = false;
+
+async function fetchUsersMap() {
+  const data = await safeGet("/api/v4/users", { limit: 250 });
+  const users = data?._embedded?.users || [];
+
+  return new Map(users.map((user) => [user.id, user.name]));
+}
+
+async function fetchLossReasonsMap() {
+  const data = await safeGet("/api/v4/leads/loss_reasons");
+  const reasons = data?._embedded?.loss_reasons || [];
+
+  return new Map(reasons.map((reason) => [reason.id, reason.name]));
+}
+
+async function fetchLeadsFromPipeline() {
   let page = 1;
-  let all = [];
+  const all = [];
 
   while (true) {
     const data = await safeGet("/api/v4/leads", {
@@ -29,32 +46,94 @@ export async function getLeads() {
     page++;
   }
 
-  const rows = all.map((lead) => {
-    const cf = normalizeCF(lead.custom_fields_values, "lead_");
+  return all;
+}
 
-    return {
-      id: lead.id,
-      nome: lead.name,
-      valor: lead.price || 0,
+function flattenLead(lead, usersMap, lossReasonsMap) {
+  const cf = normalizeCF(lead.custom_fields_values, "lead_");
 
-      status_id: lead.status_id,
-      status: CRIMAV.statuses[lead.status_id] || "Outro",
+  return {
+    id: lead.id,
+    nome: lead.name,
+    price: lead.price || 0,
 
-      created_at: dayjs.unix(lead.created_at).format("YYYY-MM-DD"),
-      closed_at: lead.closed_at
-        ? dayjs.unix(lead.closed_at).format("YYYY-MM-DD")
-        : null,
+    pipeline_id: lead.pipeline_id,
+    pipeline_name: "Funil de Vendas",
 
-      // 🔥 CAMPOS IMPORTANTES
-      data_simulacao: cf["lead_Data Simulação"],
-      data_implantacao: cf["lead_Data Implantação"],
-      data_ganho: cf["lead_Data Ganho"],
+    status_id: lead.status_id,
+    status: CRIMAV.statuses[lead.status_id] || "Outro",
 
-      ...cf,
-    };
-  });
+    responsible_user_id: lead.responsible_user_id || null,
+    responsible_user_name: usersMap.get(lead.responsible_user_id) || null,
 
-  saveCache("leads.json", rows);
+    loss_reason_id: lead.loss_reason_id || null,
+    loss_reason_name: lead.loss_reason_id
+      ? lossReasonsMap.get(lead.loss_reason_id) || null
+      : null,
 
-  return rows;
+    created_at: lead.created_at
+      ? dayjs.unix(lead.created_at).format("YYYY-MM-DD")
+      : null,
+
+    updated_at: lead.updated_at
+      ? dayjs.unix(lead.updated_at).format("YYYY-MM-DD")
+      : null,
+
+    closed_at: lead.closed_at
+      ? dayjs.unix(lead.closed_at).format("YYYY-MM-DD")
+      : null,
+
+    data_simulacao:
+      cf["lead_Data Simulação"] ||
+      cf["lead_data_simulacao"] ||
+      cf["lead_Data Simulacao"] ||
+      null,
+
+    data_implantacao:
+      cf["lead_Data Implantação"] ||
+      cf["lead_data_implantacao"] ||
+      cf["lead_Data Implantacao"] ||
+      null,
+
+    ...cf,
+  };
+}
+
+export async function syncLeads(force = false) {
+  if (isSyncing && !force) {
+    return loadCache(CACHE_FILE) || [];
+  }
+
+  isSyncing = true;
+
+  try {
+    const usersMap = await fetchUsersMap();
+    const lossReasonsMap = await fetchLossReasonsMap();
+    const leads = await fetchLeadsFromPipeline();
+
+    const rows = leads.map((lead) =>
+      flattenLead(lead, usersMap, lossReasonsMap)
+    );
+
+    saveCache(CACHE_FILE, rows);
+
+    return rows;
+  } catch (err) {
+    console.error("Erro ao sincronizar leads:", getErrorMessage(err));
+
+    const cache = loadCache(CACHE_FILE);
+    return cache || [];
+  } finally {
+    isSyncing = false;
+  }
+}
+
+export async function getLeads() {
+  const cache = loadCache(CACHE_FILE);
+
+  if (cache && cache.length) {
+    return cache;
+  }
+
+  return syncLeads(true);
 }
