@@ -9,9 +9,6 @@ const LIMIT = 250;
 
 let isSyncing = false;
 
-/**
- * Busca usuários do Kommo
- */
 async function fetchUsersMap() {
   const data = await safeGet("/api/v4/users", {
     limit: 250,
@@ -19,27 +16,17 @@ async function fetchUsersMap() {
 
   const users = data?._embedded?.users || [];
 
-  return new Map(
-    users.map((user) => [user.id, user.name])
-  );
+  return new Map(users.map((user) => [user.id, user.name]));
 }
 
-/**
- * Busca motivos de perda
- */
 async function fetchLossReasonsMap() {
   const data = await safeGet("/api/v4/leads/loss_reasons");
 
   const reasons = data?._embedded?.loss_reasons || [];
 
-  return new Map(
-    reasons.map((reason) => [reason.id, reason.name])
-  );
+  return new Map(reasons.map((reason) => [reason.id, reason.name]));
 }
 
-/**
- * Busca todos os leads do pipeline
- */
 async function fetchLeadsFromPipeline() {
   let page = 1;
   const all = [];
@@ -66,87 +53,67 @@ async function fetchLeadsFromPipeline() {
   return all;
 }
 
-/**
- * Trata e organiza lead
- */
-function flattenLead(
-  lead,
-  usersMap,
-  lossReasonsMap
-) {
-  const cf = normalizeCF(
-    lead.custom_fields_values,
-    "lead_"
-  );
+function toNumberBR(value) {
+  if (value === null || value === undefined || value === "") return 0;
+
+  if (typeof value === "number") return value;
+
+  return Number(
+    String(value)
+      .replace("R$", "")
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .trim()
+  ) || 0;
+}
+
+function flattenLead(lead, usersMap, lossReasonsMap) {
+  const cf = normalizeCF(lead.custom_fields_values, "lead_");
+
+  const valorVendaCustom =
+    cf["lead_Valor de Venda(R$)"] ||
+    cf["lead_Valor de Venda"] ||
+    cf["lead_Valor Venda"] ||
+    null;
 
   return {
     id: lead.id,
-
     nome: lead.name || null,
 
-    /**
-     * Valor do lead
-     */
+    // Valor nativo do Kommo
     price: Number(lead.price || 0),
     valor: Number(lead.price || 0),
+
+    // Valor do campo customizado do print
+    valor_venda_custom: valorVendaCustom,
+    valor_venda_custom_num: toNumberBR(valorVendaCustom),
 
     pipeline_id: lead.pipeline_id || null,
     pipeline_name: "Funil de Vendas",
 
     status_id: lead.status_id || null,
+    status: CRIMAV.statuses[lead.status_id] || "Outro",
 
-    status:
-      CRIMAV.statuses[lead.status_id] ||
-      "Outro",
+    responsible_user_id: lead.responsible_user_id || null,
+    responsible_user_name: usersMap.get(lead.responsible_user_id) || null,
 
-    /**
-     * Responsável
-     */
-    responsible_user_id:
-      lead.responsible_user_id || null,
+    loss_reason_id: lead.loss_reason_id || null,
+    loss_reason_name: lead.loss_reason_id
+      ? lossReasonsMap.get(lead.loss_reason_id) || null
+      : null,
 
-    responsible_user_name:
-      usersMap.get(
-        lead.responsible_user_id
-      ) || null,
-
-    /**
-     * Motivo perda
-     */
-    loss_reason_id:
-      lead.loss_reason_id || null,
-
-    loss_reason_name:
-      lead.loss_reason_id
-        ? lossReasonsMap.get(
-            lead.loss_reason_id
-          ) || null
-        : null,
-
-    /**
-     * Datas
-     */
     created_at: lead.created_at
-      ? dayjs
-          .unix(lead.created_at)
-          .format("YYYY-MM-DD")
+      ? dayjs.unix(lead.created_at).format("YYYY-MM-DD")
       : null,
 
     updated_at: lead.updated_at
-      ? dayjs
-          .unix(lead.updated_at)
-          .format("YYYY-MM-DD")
+      ? dayjs.unix(lead.updated_at).format("YYYY-MM-DD")
       : null,
 
     closed_at: lead.closed_at
-      ? dayjs
-          .unix(lead.closed_at)
-          .format("YYYY-MM-DD")
+      ? dayjs.unix(lead.closed_at).format("YYYY-MM-DD")
       : null,
 
-    /**
-     * Datas customizadas
-     */
     data_simulacao:
       cf["lead_Data Simulação"] ||
       cf["lead_Data Simulacao"] ||
@@ -159,19 +126,37 @@ function flattenLead(
       cf["lead_data_implantacao"] ||
       null,
 
-    /**
-     * Custom fields
-     */
+    // Campos novos para comissão/produto
+    operadora:
+      cf["lead_Operadora"] ||
+      null,
+
+    operadora_produto:
+      cf["lead_Operadora/Produto"] ||
+      cf["lead_Operadora Produto"] ||
+      cf["lead_Produto"] ||
+      cf["lead_Plano Atual"] ||
+      null,
+
+    tipo_produto:
+      cf["lead_Tipo Produto"] ||
+      null,
+
+    fase_implantacao:
+      cf["lead_Fase na Implantação"] ||
+      cf["lead_Fase na Implantacao"] ||
+      null,
+
+    fase_financeiro:
+      cf["lead_Fase Financeiro"] ||
+      null,
+
+    // Mantém todos os campos originais também
     ...cf,
   };
 }
 
-/**
- * Sincroniza leads
- */
-export async function syncLeads(
-  force = false
-) {
+export async function syncLeads(force = false) {
   if (isSyncing && !force) {
     return loadCache(CACHE_FILE) || [];
   }
@@ -179,55 +164,33 @@ export async function syncLeads(
   isSyncing = true;
 
   try {
-    console.log(
-      "🔄 Sincronizando leads..."
-    );
+    console.log("Sincronizando leads...");
 
-    const usersMap =
-      await fetchUsersMap();
-
-    const lossReasonsMap =
-      await fetchLossReasonsMap();
-
-    const leads =
-      await fetchLeadsFromPipeline();
+    const usersMap = await fetchUsersMap();
+    const lossReasonsMap = await fetchLossReasonsMap();
+    const leads = await fetchLeadsFromPipeline();
 
     const rows = leads.map((lead) =>
-      flattenLead(
-        lead,
-        usersMap,
-        lossReasonsMap
-      )
+      flattenLead(lead, usersMap, lossReasonsMap)
     );
 
     saveCache(CACHE_FILE, rows);
 
-    console.log(
-      `✅ ${rows.length} leads sincronizados`
-    );
+    console.log(`${rows.length} leads sincronizados`);
 
     return rows;
   } catch (err) {
-    console.error(
-      "❌ Erro ao sincronizar leads:",
-      err.message
-    );
+    console.error("Erro ao sincronizar leads:", err.message);
 
-    const cache =
-      loadCache(CACHE_FILE);
-
+    const cache = loadCache(CACHE_FILE);
     return cache || [];
   } finally {
     isSyncing = false;
   }
 }
 
-/**
- * Retorna cache
- */
 export async function getLeads() {
-  const cache =
-    loadCache(CACHE_FILE);
+  const cache = loadCache(CACHE_FILE);
 
   if (cache && cache.length) {
     return cache;
