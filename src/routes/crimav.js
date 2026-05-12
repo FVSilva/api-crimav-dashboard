@@ -21,7 +21,6 @@ router.get("/sync", async (req, res) => {
 
     res.json({
       ok: true,
-      message: "Sync executado com sucesso",
       leads: leads.length,
       fechados: fechados.length,
     });
@@ -31,6 +30,28 @@ router.get("/sync", async (req, res) => {
       error: err.message,
     });
   }
+});
+
+router.get("/debug-fields", async (req, res) => {
+  const leads = await syncLeads(true);
+
+  const sample = leads.find((lead) =>
+    lead.debug_custom_field_keys?.some((key) =>
+      key.toLowerCase().includes("operadora") ||
+      key.toLowerCase().includes("produto") ||
+      key.toLowerCase().includes("venda")
+    )
+  );
+
+  res.json({
+    ok: true,
+    sample_id: sample?.id || null,
+    operadora: sample?.operadora || null,
+    operadora_produto: sample?.operadora_produto || null,
+    tipo_produto: sample?.tipo_produto || null,
+    valor_venda_custom: sample?.valor_venda_custom || null,
+    debug_custom_field_keys: sample?.debug_custom_field_keys || [],
+  });
 });
 
 export default router;
