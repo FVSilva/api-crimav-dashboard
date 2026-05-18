@@ -12,12 +12,14 @@ let isSyncing = false;
 async function fetchUsersMap() {
   const data = await safeGet("/api/v4/users", { limit: 250 });
   const users = data?._embedded?.users || [];
+
   return new Map(users.map((user) => [user.id, user.name]));
 }
 
 async function fetchLossReasonsMap() {
   const data = await safeGet("/api/v4/leads/loss_reasons");
   const reasons = data?._embedded?.loss_reasons || [];
+
   return new Map(reasons.map((reason) => [reason.id, reason.name]));
 }
 
@@ -74,6 +76,7 @@ function findCF(cf, possibleNames = []) {
 
 function toNumberBR(value) {
   if (value === null || value === undefined || value === "") return 0;
+
   if (typeof value === "number") return value;
 
   return (
@@ -120,11 +123,29 @@ function flattenLead(lead, usersMap, lossReasonsMap) {
     "Fase na Implantação",
     "Fase Implantação",
     "Fase na Implantacao",
+    "Fasa na Implantação",
+    "Fasa na Implantacao",
   ]);
 
   const faseFinanceiro = findCF(cf, [
     "Fase Financeiro",
     "Financeiro",
+  ]);
+
+  const tipoParceiria = findCF(cf, [
+    "Tipo parceiria",
+    "Tipo Parceiria",
+    "Tipo parceria",
+    "Tipo Parceria",
+    "Tipo de parceria",
+    "Tipo de Parceria",
+  ]);
+
+  const parceiroId = findCF(cf, [
+    "field_1376296",
+    "Parceiro(ID)(0 p/nenhum)",
+    "Parceiro ID",
+    "Parceiro",
   ]);
 
   return {
@@ -174,10 +195,20 @@ function flattenLead(lead, usersMap, lossReasonsMap) {
     operadora,
     operadora_produto: operadoraProduto,
     tipo_produto: tipoProduto,
+    valor_venda_custom: valorVendaCustom,
+    valor_venda_custom_num: toNumberBR(valorVendaCustom),
     fase_implantacao: faseImplantacao,
     fase_financeiro: faseFinanceiro,
 
-    // ajuda a descobrir os nomes reais dos campos no JSON
+    // nome mantido exatamente como você pediu
+    "Tipo parceiria": tipoParceiria,
+
+    // campo limpo para usar no BI
+    tipo_parceiria: tipoParceiria,
+
+    // parceiro por ID do campo 1376296
+    parceiro_id: parceiroId,
+
     debug_custom_field_keys: Object.keys(cf),
 
     ...cf,
