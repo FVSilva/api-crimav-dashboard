@@ -6,6 +6,7 @@ export const CRIMAV = {
     103021639: "Qualificação",
     102882995: "Simulação",
     103314883: "Fechamento",
+    106188499: "Commit",
     102882999: "Implantação",
     142: "Venda Ganha",
     143: "Venda Perdida",
