@@ -76,7 +76,6 @@ function findCF(cf, possibleNames = []) {
 
 function toNumberBR(value) {
   if (value === null || value === undefined || value === "") return 0;
-
   if (typeof value === "number") return value;
 
   return (
@@ -93,9 +92,7 @@ function toNumberBR(value) {
 function flattenLead(lead, usersMap, lossReasonsMap) {
   const cf = normalizeCF(lead.custom_fields_values, "lead_");
 
-  const operadora = findCF(cf, [
-    "Operadora",
-  ]);
+  const operadora = findCF(cf, ["Operadora"]);
 
   const operadoraProduto = findCF(cf, [
     "Operadora Produto",
@@ -148,15 +145,19 @@ function flattenLead(lead, usersMap, lossReasonsMap) {
     "Parceiro",
   ]);
 
+  const campaignName = findCF(cf, [
+    "field_1378358",
+    "Campaign Name",
+    "Campaign Name ID",
+    "Campaign",
+  ]);
+
   return {
     id: lead.id,
     nome: lead.name || null,
 
     price: Number(lead.price || 0),
     valor: Number(lead.price || 0),
-
-    valor_venda_custom: valorVendaCustom,
-    valor_venda_custom_num: toNumberBR(valorVendaCustom),
 
     pipeline_id: lead.pipeline_id || null,
     pipeline_name: "Funil de Vendas",
@@ -195,19 +196,19 @@ function flattenLead(lead, usersMap, lossReasonsMap) {
     operadora,
     operadora_produto: operadoraProduto,
     tipo_produto: tipoProduto,
+
     valor_venda_custom: valorVendaCustom,
     valor_venda_custom_num: toNumberBR(valorVendaCustom),
+
     fase_implantacao: faseImplantacao,
     fase_financeiro: faseFinanceiro,
 
-    // nome mantido exatamente como você pediu
     "Tipo parceiria": tipoParceiria,
-
-    // campo limpo para usar no BI
     tipo_parceiria: tipoParceiria,
 
-    // parceiro por ID do campo 1376296
     parceiro_id: parceiroId,
+
+    campaign_name: campaignName,
 
     debug_custom_field_keys: Object.keys(cf),
 
